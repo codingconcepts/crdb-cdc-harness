@@ -15,16 +15,17 @@ import (
 
 // Model holds the configuration for the terminal UI.
 type Model struct {
-	unreadCount int
-	avgLatency  time.Duration
-	dbWriting   bool
-	statusChan  chan bool
-	messages    chan models.KafkaMessage
-	spinner     spinner.Model
-	help        help.Model
-	keys        models.KeyMap
-	width       int
-	height      int
+	countWritten uint64
+	countUnread  int
+	avgLatency   time.Duration
+	dbWriting    bool
+	statusChan   chan bool
+	messages     chan models.KafkaMessage
+	spinner      spinner.Model
+	help         help.Model
+	keys         models.KeyMap
+	width        int
+	height       int
 }
 
 // NewModel initializes and returns a new instance of Model.
@@ -48,7 +49,8 @@ func NewModel(messages chan models.KafkaMessage, statusChan chan bool) Model {
 
 // UpdateStatsMsg holds the variables published during status updates.
 type UpdateStatsMsg struct {
-	CountUnread int
+	CountUnread  int
+	CountWritten uint64
 }
 
 // LatencyUpdateMsgs holds the variables published during latency updates.
@@ -72,8 +74,11 @@ func (m Model) View() string {
 
 	statsContent := lipgloss.JoinVertical(lipgloss.Left,
 		lipgloss.JoinHorizontal(lipgloss.Left,
+			styles.StatsLabelStyle.Render("Written: "),
+			styles.StatsValueStyle.Render(fmt.Sprintf("%04d", m.countWritten))),
+		lipgloss.JoinHorizontal(lipgloss.Left,
 			styles.StatsLabelStyle.Render("Unread:  "),
-			styles.StatsValueStyle.Render(fmt.Sprintf("%04d", m.unreadCount))),
+			styles.StatsValueStyle.Render(fmt.Sprintf("%04d", m.countUnread))),
 		lipgloss.JoinHorizontal(lipgloss.Left,
 			styles.StatsLabelStyle.Render("Latency: "),
 			styles.StatsValueStyle.Render(m.avgLatency.String())),
@@ -107,7 +112,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case UpdateStatsMsg:
-		m.unreadCount = msg.CountUnread
+		m.countUnread = msg.CountUnread
+		m.countWritten = msg.CountWritten
 
 	case LatencyUpdateMsg:
 		m.avgLatency = msg.AvgLatency
@@ -139,7 +145,7 @@ func (m Model) Init() tea.Cmd {
 		m.spinner.Tick,
 		tea.Every(time.Second, func(time.Time) tea.Msg {
 			return UpdateStatsMsg{
-				CountUnread: m.unreadCount,
+				CountUnread: m.countUnread,
 			}
 		}),
 	)

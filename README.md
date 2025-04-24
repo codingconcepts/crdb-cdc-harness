@@ -5,10 +5,10 @@ A little test harness that shows latencies and message counts for rows emitted b
 
 Find the release that matches your architecture on the [releases](https://github.com/codingconcepts/crdb-cdc-harness/releases) page.
 
-Download the tar, extract the executable, and move it into your PATH. For example:
+Download the tar for your OS and architecture, extract the executable, and move it into your PATH. For example:
 
 ```sh
-tar -xvf cdch_0.0.1_macos_arm64.tar.gz
+tar -xvf cdch_[VERSION]_[OS]_[ARCH].tar.gz
 ```
 
 ### Usage Example
@@ -96,8 +96,8 @@ cdch \
 --kafka-url localhost:9092 \
 --kafka-topic purchase \
 --kafka-message-id-path after.id \
---write-frequency 1s \
---latency-pool-size 10 \
+--write-frequency 10ms \
+--latency-pool-size 100 \
 --write-statement 'INSERT INTO purchase (customer_id, total) VALUES ($1, $2) RETURNING id' \
 --arg uuid \
 --arg price

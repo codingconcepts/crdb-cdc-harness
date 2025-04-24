@@ -16,3 +16,6 @@ go.work.sum
 
 # Sensitive files
 .env
+
+# OS files
+.DS_Store

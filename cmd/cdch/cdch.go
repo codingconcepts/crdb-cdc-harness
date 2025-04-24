@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -24,8 +25,9 @@ import (
 )
 
 var (
-	version    string
-	writtenIDs = safemap.New[string, time.Time]()
+	version      string
+	writtenCount uint64
+	writtenIDs   = safemap.New[string, time.Time]()
 )
 
 func main() {
@@ -124,7 +126,10 @@ func listen(env models.EnvironmentVariables, messages <-chan models.KafkaMessage
 		}
 
 		p.Send(views.LatencyUpdateMsg{AvgLatency: duration.Round(avgLatency, time.Millisecond)})
-		p.Send(views.UpdateStatsMsg{CountUnread: writtenIDs.Len()})
+		p.Send(views.UpdateStatsMsg{
+			CountUnread:  writtenIDs.Len(),
+			CountWritten: atomic.LoadUint64(&writtenCount),
+		})
 	}
 }
 
@@ -178,6 +183,7 @@ func manageDatabaseWrites(env models.EnvironmentVariables, db *pgxpool.Pool, sta
 
 				// Add written row
 				writtenIDs.Set(id, time.Now())
+				atomic.AddUint64(&writtenCount, 1)
 			}
 		}
 	}
