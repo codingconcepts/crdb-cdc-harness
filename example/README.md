@@ -1,3 +1,9 @@
+### Prerequisites
+
+* Docker
+* CockroachDB CLI
+* Red Panda (rpk) CLI
+
 ### Setup
 
 Start CockroachDB and Kafka
