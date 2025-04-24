@@ -1,3 +1,5 @@
+### Setup
+
 Start CockroachDB and Kafka
 
 ```sh
@@ -45,4 +47,10 @@ CREATE CHANGEFEED FOR TABLE purchase
   }',
   on_error = 'pause',
   initial_scan = 'no';
+```
+
+### Teardown
+
+```sh
+(cd example && docker compose down)
 ```

@@ -55,9 +55,3 @@ cdch \
 --arg uuid \
 --arg price
 ```
-
-Teardown
-
-```sh
-(cd example && docker compose down)
-```
