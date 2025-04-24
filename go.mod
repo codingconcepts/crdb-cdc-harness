@@ -15,7 +15,6 @@ require (
 	github.com/samber/lo v1.49.1
 	github.com/segmentio/kafka-go v0.4.47
 	github.com/tidwall/gjson v1.18.0
-	github.com/tidwall/sjson v1.2.5
 )
 
 require (

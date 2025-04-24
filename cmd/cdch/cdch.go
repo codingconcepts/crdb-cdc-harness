@@ -79,7 +79,7 @@ func main() {
 	status := make(chan bool, 10)
 
 	go readKafkaMessages(e, kafkaReader, messages)
-	go manageDatabaseWrites(e, db, status)
+	go manageDatabaseWrites(e, db)
 
 	p := tea.NewProgram(views.NewModel(messages, status))
 
@@ -178,7 +178,7 @@ func readKafkaMessages(env models.EnvironmentVariables, kafkaReader *kafka.Reade
 	}
 }
 
-func manageDatabaseWrites(env models.EnvironmentVariables, db *pgxpool.Pool, statusChan <-chan bool) {
+func manageDatabaseWrites(env models.EnvironmentVariables, db *pgxpool.Pool) {
 	ticker := time.Tick(env.WriteFrequency)
 
 	for range ticker {
