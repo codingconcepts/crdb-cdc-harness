@@ -1,0 +1,65 @@
+services:
+
+  kafka:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.10-arm64
+    command:
+      - redpanda start
+      - --smp 1
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://kafka:29092,OUTSIDE://localhost:9092
+      - --pandaproxy-addr 0.0.0.0:8082
+      - --advertise-pandaproxy-addr localhost:8082
+    ports:
+      - 9092:9092
+    networks:
+      - demo
+
+  cockroachdb-0:
+    image: cockroachdb/cockroach:v25.1.4
+    hostname: cockroachdb-0
+    container_name: cockroachdb-0
+    command: start --insecure --join=cockroachdb-0,cockroachdb-1,cockroachdb-2
+    networks:
+      - demo
+
+  cockroachdb-1:
+    image: cockroachdb/cockroach:v25.1.4
+    hostname: cockroachdb-1
+    container_name: cockroachdb-1
+    command: start --insecure --join=cockroachdb-0,cockroachdb-1,cockroachdb-2
+    networks:
+      - demo
+
+  cockroachdb-2:
+    image: cockroachdb/cockroach:v25.1.4
+    hostname: cockroachdb-2
+    container_name: cockroachdb-2
+    command: start --insecure --join=cockroachdb-0,cockroachdb-1,cockroachdb-2
+    networks:
+      - demo
+
+  haproxy:
+    hostname: haproxy
+    image: timveil/dynamic-haproxy:latest
+    ports:
+      - 26257:26257
+      - 8080:8080
+      - 8081:8081
+    environment:
+      - NODES=cockroachdb-0 cockroachdb-1 cockroachdb-2
+    links:
+      - cockroachdb-0
+      - cockroachdb-1
+      - cockroachdb-2
+    networks:
+    - demo
+
+
+networks:
+  demo:
+    driver: bridge
+
+volumes:
+  cockroachdb:
