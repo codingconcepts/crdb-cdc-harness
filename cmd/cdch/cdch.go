@@ -25,9 +25,10 @@ import (
 )
 
 var (
-	version      string
-	writtenCount uint64
-	writtenIDs   = safemap.New[string, time.Time]()
+	version       string
+	writtenCount  uint64
+	writingActive = true
+	writtenIDs    = safemap.New[string, time.Time]()
 )
 
 func main() {
@@ -82,7 +83,7 @@ func main() {
 
 	p := tea.NewProgram(views.NewModel(messages, status))
 
-	go listen(e, messages, p)
+	go listen(e, messages, status, p)
 
 	fmt.Print("\033[H\033[2J")
 	if _, err := p.Run(); err != nil {
@@ -90,14 +91,25 @@ func main() {
 	}
 }
 
-func listen(env models.EnvironmentVariables, messages <-chan models.KafkaMessage, p *tea.Program) {
+func listen(env models.EnvironmentVariables, messages <-chan models.KafkaMessage, status <-chan bool, p *tea.Program) {
 	latencies := ring.New[time.Duration](env.LatencyPoolSize)
 	maxOffset := int64(-1)
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	printTick := time.Tick(time.Second)
 
-	go func() {
-		for m := range messages {
+	var lastMessageReceivedTime time.Time
+
+	for {
+		select {
+
+		// Fires on every status change.
+		case status := <-status:
+			writingActive = status
+
+		// Fires on every new message received from Kafka.
+		case m := <-messages:
+			// Update the last message time
+			lastMessageReceivedTime = time.Now()
+
 			// Only process each message once.
 			if m.Offset <= int64(maxOffset) {
 				continue
@@ -114,22 +126,32 @@ func listen(env models.EnvironmentVariables, messages <-chan models.KafkaMessage
 
 			// Remove the read item.
 			writtenIDs.Delete(m.RowID)
+
+		// Fires every second and updates the terminal
+		case <-printTick:
+			var avgLatency time.Duration
+
+			// If we've not received a Kafka message for more than 5 seconds, derive
+			// the latency from the time we last saw a message.
+			noMessagesFor := time.Since(lastMessageReceivedTime)
+			if noMessagesFor >= time.Second*5 && writingActive {
+				avgLatency = noMessagesFor
+			} else {
+				latencySlice := latencies.Slice()
+				if len(latencySlice) > 0 {
+					avgLatency = lo.Sum(latencySlice) / time.Duration(len(latencySlice))
+				}
+			}
+
+			p.Send(views.LatencyUpdateMsg{
+				AvgLatency: duration.Round(avgLatency, time.Millisecond),
+			})
+
+			p.Send(views.UpdateStatsMsg{
+				CountUnread:  writtenIDs.Len(),
+				CountWritten: atomic.LoadUint64(&writtenCount),
+			})
 		}
-	}()
-
-	for range ticker.C {
-		latencySlice := latencies.Slice()
-		var avgLatency time.Duration
-
-		if len(latencySlice) > 0 {
-			avgLatency = lo.Sum(latencySlice) / time.Duration(len(latencySlice))
-		}
-
-		p.Send(views.LatencyUpdateMsg{AvgLatency: duration.Round(avgLatency, time.Millisecond)})
-		p.Send(views.UpdateStatsMsg{
-			CountUnread:  writtenIDs.Len(),
-			CountWritten: atomic.LoadUint64(&writtenCount),
-		})
 	}
 }
 
@@ -157,34 +179,29 @@ func readKafkaMessages(env models.EnvironmentVariables, kafkaReader *kafka.Reade
 }
 
 func manageDatabaseWrites(env models.EnvironmentVariables, db *pgxpool.Pool, statusChan <-chan bool) {
-	active := true
 	ticker := time.Tick(env.WriteFrequency)
 
-	for {
-		select {
-		case status := <-statusChan:
-			active = status
-
-		case <-ticker:
-			if active {
-				args, err := random.GenerateArgValues(env.Args)
-				if err != nil {
-					log.Printf("error generating args values: %v", err)
-					continue
-				}
-
-				row := db.QueryRow(context.Background(), env.WriteStatement, args...)
-
-				var id string
-				if err = row.Scan(&id); err != nil {
-					log.Printf("error scanning written row: %v", err)
-					continue
-				}
-
-				// Add written row
-				writtenIDs.Set(id, time.Now())
-				atomic.AddUint64(&writtenCount, 1)
-			}
+	for range ticker {
+		if !writingActive {
+			continue
 		}
+
+		args, err := random.GenerateArgValues(env.Args)
+		if err != nil {
+			log.Printf("error generating args values: %v", err)
+			continue
+		}
+
+		row := db.QueryRow(context.Background(), env.WriteStatement, args...)
+
+		var id string
+		if err = row.Scan(&id); err != nil {
+			log.Printf("error scanning written row: %v", err)
+			continue
+		}
+
+		// Add written row
+		writtenIDs.Set(id, time.Now())
+		atomic.AddUint64(&writtenCount, 1)
 	}
 }
